@@ -1,115 +1,78 @@
-schemaVersion: 2.3.0
+schemaVersion: 2.2.0
 metadata:
-  name: bitnet-cli-workspace
-  displayName: BitNet CLI Development Environment
-  description: A Devfile for running and interacting with BitNet CLI in an Eclipse Che workspace.
+  name: bitnet-chat-che
 
 components:
-  - name: bitnet-cli-container
+  # Компонент-контейнер, що визначає середовище виконання
+  - name: bitnet-runtime
     container:
-      # Using the public waikatodatamining/bitnet image, which is relatively compact (740.5 MB)
-      image: waikatodatamining/bitnet:2025-05-30_cpu
-      # Allows the container to access the project's source code
+      # Eclipse Che автоматично збере цей Dockerfile з репозиторію
+      image: '${CHE_DOCKERFILE_PATH}'
+      memoryLimit: 8Gi
+      cpuLimit: "4"
       mountSources: true
-      # Map the project root directory to ${PROJECT_SOURCE} inside the container.
-      # ${PROJECT_SOURCE} is typically /workspace in Eclipse Che.
-      sourceMapping: ${PROJECT_SOURCE}
-      # Set reasonable memory limits. Although the BitNet 2B model itself requires 0.4 GB,
-      # an instance of BitNet can consume about 1.5 GB of RAM.
-      # 2Gi provides a comfortable buffer.
-      memoryLimit: 2Gi
-      memoryRequest: 1.5Gi
-      # Set reasonable CPU limits. BitNet is optimized for CPU.
-      # Request 1 core, limit up to 2 cores for responsiveness and performance.
-      cpuLimit: "2"
-      cpuRequest: "1"
-      env:
-        - name: BITNET_MODELS_BASE_DIR_RELATIVE
-          value: models
-        - name: BITNET_MODEL_2B_SUBDIR_RELATIVE
-          value: BitNet-b1.58-2B-4T
-        - name: BITNET_MODEL_2B_FILE
-          value: ggml-model-i2_s.gguf
-        - name: BITNET_MODEL_3B_SUBDIR_RELATIVE
-          value: bitnet_b1_58-3B
-        - name: BITNET_MODEL_3B_FILE
-          value: bitnet_b1_58-3B.gguf
-        - name: BITNET_DIR
-          value: /opt/BitNet
-
-      # Add a command to keep the container running indefinitely.
-      # This is necessary as the base image likely doesn't have its own long-running command.
-      command: ["/bin/bash", "-c"]
-      args: ["tail -f /dev/null"]
+      endpoints:
+        - name: bitnet-api
+          targetPort: 8000
+          exposure: internal
 
 commands:
-  - id: download-model-2b
+  # 1. Команда для ініціалізації git-підмодулів
+  - id: init-submodules
     exec:
-      component: bitnet-cli-container
-      commandLine: mkdir -p "${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_2B_SUBDIR_RELATIVE}" && huggingface-cli download microsoft/BitNet-b1.58-2B-4T-gguf --local-dir "${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_2B_SUBDIR_RELATIVE}"
-      workingDir: ${PROJECT_SOURCE}
+      component: bitnet-runtime
+      commandLine: "git submodule update --init --recursive"
+      workingDir: ${PROJECTS_ROOT}
+
+  # 2. Команда для створення віртуального середовища Python
+  - id: create-venv
+    exec:
+      component: bitnet-runtime
+      commandLine: "python3 -m venv.venv"
+      workingDir: ${PROJECTS_ROOT}
+
+  # 3. Команда для встановлення залежностей Python
+  - id: install-deps
+    exec:
+      component: bitnet-runtime
+      commandLine: ".venv/bin/pip install -r api/requirements.txt"
+      workingDir: ${PROJECTS_ROOT}
+
+  # 4. Команда для завантаження моделі
+  - id: download-model
+    exec:
+      component: bitnet-runtime
+      commandLine: "bash scripts/download_model.sh"
+      workingDir: ${PROJECTS_ROOT}
+
+  # 5. Команда для компіляції рушія bitnet.cpp
+  - id: build-bitnet
+    exec:
+      component: bitnet-runtime
+      commandLine: "bash scripts/build.sh"
+      workingDir: ${PROJECTS_ROOT}
+
+  # Композитна команда для повної підготовки середовища
+  - id: prepare-environment
+    composite:
+      label: "1. Prepare Environment"
+      commands:
+        - init-submodules
+        - create-venv
+        - install-deps
+        - download-model
+        - build-bitnet
       group:
         kind: build
+        isDefault: true
 
-  - id: download-model-3b
+  # Команда для запуску API-сервера
+  - id: run-api-server
     exec:
-      component: bitnet-cli-container
-      commandLine: mkdir -p "${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_3B_SUBDIR_RELATIVE}" && huggingface-cli download QuantFactory/bitnet_b1_58-3B-GGUF --local-dir "${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_3B_SUBDIR_RELATIVE}"
-      workingDir: ${PROJECT_SOURCE}
-      group:
-        kind: build
-
-  # Show usage instructions for the 2B model
-  - id: use-model-2b
-    exec:
-      component: bitnet-cli-container
-      commandLine: "echo 'To use the 2B model, run: bitnet_run_inference -m \"${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_2B_SUBDIR_RELATIVE}/${BITNET_MODEL_2B_FILE}\" -p \"Your prompt\" -n 128'"
-      workingDir: ${PROJECT_SOURCE}
-      group:
-        kind: run
-
-  # Show usage instructions for the 3B model
-  - id: use-model-3b
-    exec:
-      component: bitnet-cli-container
-      commandLine: "echo 'To use the 3B model, run: bitnet_run_inference -m \"${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_3B_SUBDIR_RELATIVE}/${BITNET_MODEL_3B_FILE}\" -p \"Your prompt\" -n 128'"
-      workingDir: ${PROJECT_SOURCE}
-      group:
-        kind: run
-
-  # Example of running BitNet CLI inference with the 2B model (default)
-  - id: run-bitnet-inference-example
-    exec:
-      component: bitnet-cli-container
-      commandLine: bitnet_run_inference -m "${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_2B_SUBDIR_RELATIVE}/${BITNET_MODEL_2B_FILE}" -p 'What is the capital of France?' -n 128
-      # Execute from /opt/BitNet to find the llama-cli executable
-      workingDir: ${BITNET_DIR}
+      component: bitnet-runtime
+      label: "2. Run API Server"
+      commandLine: ".venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000"
+      workingDir: ${PROJECTS_ROOT}
       group:
         kind: run
         isDefault: true
-
-  # Run BitNet in interactive chat mode with the 2B model (default)
-  - id: run-bitnet-chat-interactive
-    exec:
-      component: bitnet-cli-container
-      commandLine: bitnet_run_inference -m "${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_2B_SUBDIR_RELATIVE}/${BITNET_MODEL_2B_FILE}" -p 'You are a helpful assistant.' -cnv
-      # Execute from /opt/BitNet to find the llama-cli executable
-      workingDir: ${BITNET_DIR}
-      group:
-        kind: run
-
-  # Run a simple benchmark on the 2B model
-  - id: benchmark-model-2b
-    exec:
-      component: bitnet-cli-container
-      # This command generates 512 tokens and the CLI output will include performance metrics (tokens/sec)
-      commandLine: bitnet_run_inference -m "${PROJECT_SOURCE}/${BITNET_MODELS_BASE_DIR_RELATIVE}/${BITNET_MODEL_2B_SUBDIR_RELATIVE}/${BITNET_MODEL_2B_FILE}" -p 'Tell me a long story about a robot.' -n 512
-      # Execute from /opt/BitNet to find the llama-cli executable
-      workingDir: ${BITNET_DIR}
-      group:
-        kind: run
-
-events:
-  # Automatically download the 2B model after the workspace starts
-  postStart:
-    - download-model-2b

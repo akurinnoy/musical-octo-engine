@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# Скрипт для компіляції C++ рушія bitnet.cpp
+
+set -e # Зупинити виконання при першій помилці
+
+# Визначення шляху до директорії BitNet
+BITNET_DIR="BitNet"
+
+echo "Початок процесу компіляції bitnet.cpp..."
+
+# Перевірка, чи існує директорія BitNet
+if [ -d $BITNET_DIR ]; then
+    echo "Помилка: Директорія '$BITNET_DIR' не знайдена. Переконайтеся, що git-підмодуль ініціалізовано."
+    exit 1
+fi
+
+# Перехід до директорії з вихідним кодом BitNet
+cd "$BITNET_DIR"
+
+# Створення директорії для збірки, якщо вона не існує
+mkdir -p build
+cd build
+
+# Конфігурація проєкту за допомогою CMake
+# Явно вказуємо компілятори, щоб гарантувати використання правильних версій
+echo "Конфігурація збірки за допомогою CMake..."
+cmake -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18..
+
+# Компіляція проєкту
+# Використовуємо `nproc` для визначення кількості ядер і паралельної збірки
+echo "Компіляція bitnet.cpp (це може зайняти деякий час)..."
+# Determine the number of processors
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    NUM_PROC=$(nproc)
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    NUM_PROC=$(sysctl -n hw.ncpu)
+else
+    # Default to 1 if the OS is not recognized
+    NUM_PROC=1
+fi
+
+make -j"$NUM_PROC"
+
+echo "Компіляція bitnet.cpp завершена успішно."
