@@ -5,12 +5,12 @@
 set -e # Зупинити виконання при першій помилці
 
 # Визначення шляху до директорії BitNet
-BITNET_DIR="BitNet"
+BITNET_DIR="${PROJECT_SOURCE}/BitNet"
 
 echo "Початок процесу компіляції bitnet.cpp..."
 
 # Перевірка, чи існує директорія BitNet
-if [ -d $BITNET_DIR ]; then
+if [ ! -d $BITNET_DIR ]; then
     echo "Помилка: Директорія '$BITNET_DIR' не знайдена. Переконайтеся, що git-підмодуль ініціалізовано."
     exit 1
 fi
