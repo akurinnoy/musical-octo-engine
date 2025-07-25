@@ -6,8 +6,8 @@ components:
   # Компонент-контейнер, що визначає середовище виконання
   - name: bitnet-runtime
     container:
-      # Eclipse Che автоматично збере цей Dockerfile з репозиторію
-      image: '${CHE_DOCKERFILE_PATH}'
+      # Прямо вказуємо на попередньо збілдений образ
+      image: 'quay.io/okurinny/bitnet-che-image:latest'
       memoryLimit: 8Gi
       cpuLimit: "4"
       mountSources: true
