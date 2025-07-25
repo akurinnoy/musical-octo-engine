@@ -39,7 +39,7 @@ commands:
       commandLine: |
         set -e && \
         echo "--- 1. Клонування репозиторію BitNet ---" && \
-        if [ -d ${PROJECT_SOURCE}/BitNet ]; then \
+        if [ ! -d ${PROJECT_SOURCE}/BitNet ]; then \
           echo "Клонування репозиторію BitNet..." && \
           git clone --recursive https://github.com/microsoft/BitNet.git; \
         else \
