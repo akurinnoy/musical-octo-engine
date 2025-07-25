@@ -3,10 +3,8 @@ metadata:
   name: bitnet-chat-che
 
 components:
-  # Компонент-контейнер, що визначає середовище виконання
   - name: bitnet-runtime
     container:
-      # Прямо вказуємо на попередньо збілдений образ
       image: 'quay.io/okurinny/bitnet-che-image:latest'
       memoryLimit: 8Gi
       cpuLimit: "4"
@@ -15,56 +13,56 @@ components:
         - name: bitnet-api
           targetPort: 8000
           exposure: internal
+      command: ["/bin/bash", "-c"]
+      args: ["tail -f /dev/null"]
+      env:
+        - name: BITNET_MODELS_BASE_DIR_RELATIVE
+          value: models
+        - name: BITNET_MODEL_2B_SUBDIR_RELATIVE
+          value: BitNet-b1.58-2B-4T
+        - name: BITNET_MODEL_2B_FILE
+          value: ggml-model-i2_s.gguf
+        - name: BITNET_MODEL_3B_SUBDIR_RELATIVE
+          value: bitnet_b1_58-3B
+        - name: BITNET_MODEL_3B_FILE
+          value: bitnet_b1_58-3B.gguf
+        - name: BITNET_DIR
+          value: /opt/BitNet
 
 commands:
-  # 1. Команда для ініціалізації git-підмодулів
-  - id: init-submodules
-    exec:
-      component: bitnet-runtime
-      commandLine: "git submodule update --init --recursive"
-      workingDir: ${PROJECTS_ROOT}
-
-  # 2. Команда для створення віртуального середовища Python
-  - id: create-venv
-    exec:
-      component: bitnet-runtime
-      commandLine: "python3 -m venv.venv"
-      workingDir: ${PROJECTS_ROOT}
-
-  # 3. Команда для встановлення залежностей Python
-  - id: install-deps
-    exec:
-      component: bitnet-runtime
-      commandLine: ".venv/bin/pip install -r api/requirements.txt"
-      workingDir: ${PROJECTS_ROOT}
-
-  # 4. Команда для завантаження моделі
-  - id: download-model
-    exec:
-      component: bitnet-runtime
-      commandLine: "bash scripts/download_model.sh"
-      workingDir: ${PROJECTS_ROOT}
-
-  # 5. Команда для компіляції рушія bitnet.cpp
-  - id: build-bitnet
-    exec:
-      component: bitnet-runtime
-      commandLine: "bash scripts/build.sh"
-      workingDir: ${PROJECTS_ROOT}
-
-  # Композитна команда для повної підготовки середовища
+  # Оновлена, надійна команда для повної підготовки середовища
   - id: prepare-environment
-    composite:
+    exec:
+      component: bitnet-runtime
       label: "1. Prepare Environment"
-      commands:
-        - init-submodules
-        - create-venv
-        - install-deps
-        - download-model
-        - build-bitnet
-      group:
-        kind: build
-        isDefault: true
+      # Замінили git submodule на надійний git clone
+      commandLine: |
+        set -e && \
+        echo "--- 1. Клонування репозиторію BitNet ---" && \
+        if [ -d ${PROJECT_SOURCE}/BitNet ]; then \
+          echo "Клонування репозиторію BitNet..." && \
+          git clone --recursive https://github.com/microsoft/BitNet.git; \
+        else \
+          echo "Директорія BitNet вже існує, пропуск клонування."; \
+        fi && \
+        echo "--- 2. Створення віртуального середовища Python ---" && \
+        python3 -m venv .venv && \
+        echo "--- 3. Встановлення залежностей Python ---" && \
+        .venv/bin/pip install -r api/requirements.txt && \
+        echo "--- 4. Завантаження моделі BitNet (надійний метод з hf download) ---" && \
+        CACHE_DIR="${PROJECT_SOURCE}/.cache" && \
+        MODEL_DIR="${PROJECT_SOURCE}/models/BitNet-b1.58-2B-4T" && \
+        mkdir -p "${MODEL_DIR}" && \
+        mkdir -p "${CACHE_DIR}" && \
+        echo "Завантаження файлів моделі (*.gguf) з репозиторію microsoft/bitnet-b1.58-2B-4T-gguf..." && \
+        HF_HOME="${CACHE_DIR}".venv/bin/hf download \
+          "microsoft/bitnet-b1.58-2B-4T-gguf" \
+          --include "*.gguf" \
+          --local-dir "${MODEL_DIR}" && \
+        echo "--- 5. Компіляція bitnet.cpp ---" && \
+        bash scripts/build.sh && \
+        echo "--- ✅ Підготовка середовища успішно завершена! ---"
+      workingDir: ${PROJECT_SOURCE}
 
   # Команда для запуску API-сервера
   - id: run-api-server
@@ -72,7 +70,7 @@ commands:
       component: bitnet-runtime
       label: "2. Run API Server"
       commandLine: ".venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000"
-      workingDir: ${PROJECTS_ROOT}
+      workingDir: ${PROJECT_SOURCE}
       group:
         kind: run
         isDefault: true
