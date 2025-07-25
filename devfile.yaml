@@ -55,10 +55,11 @@ commands:
         mkdir -p "${MODEL_DIR}" && \
         mkdir -p "${CACHE_DIR}" && \
         echo "Завантаження файлів моделі (*.gguf) з репозиторію microsoft/bitnet-b1.58-2B-4T-gguf..." && \
-        HF_HOME="${CACHE_DIR}".venv/bin/hf download \
+        HF_HOME="${CACHE_DIR}" .venv/bin/hf download \
           "microsoft/bitnet-b1.58-2B-4T-gguf" \
           --include "*.gguf" \
-          --local-dir "${MODEL_DIR}" && \
+          --local-dir "${MODEL_DIR}" \
+          --cache-dir "${CACHE_DIR}" && \
         echo "--- 5. Компіляція bitnet.cpp ---" && \
         bash scripts/build.sh && \
         echo "--- ✅ Підготовка середовища успішно завершена! ---"
